@@ -38,3 +38,22 @@ func Test_output_node(t *testing.T) {
 		t.Errorf("node insertion is behaving strangely! %p: %+v, %p: %+v, %p: %+v", head, head, node, node, tail, tail)
 	}
 }
+
+func Test_grab(t *testing.T) {
+	testcases := map[string]struct{
+		input, out1, out2 string
+	}{
+		"leading-space": {"    this is\t \na string withmanytokens\r", "this", "is\t \na string withmanytokens\r"},
+		"normal": {"this is\t \na string withmanytokens\r", "this", "is\t \na string withmanytokens\r"},
+		"end": {"token", "token", ""},
+		"trailing-space": {"token   ", "token", ""},
+	}
+
+	for k, v := range testcases {
+		t.Run(k, func(t *testing.T) {
+			out1, out2 := grab(v.input)
+			if out1 != v.out1 { t.Errorf("Unexpected token: got '%s', expected '%s'", out1, v.out1) }
+			if out2 != v.out2 { t.Errorf("Unexpected trailer: got '%s', expected '%s'", out2, v.out2) }
+		})
+	}
+}
