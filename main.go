@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"unicode"
@@ -140,5 +141,24 @@ func main() {
 		fmt.Printf("    through verbatim. Quick note: you must write-new and swap, not\n")
 		fmt.Printf("    overwrite the initial rebase todo file (for now).\n")
 		os.Exit(0)
+	}
+
+	rebase_todo, err := os.Open(os.Args[1])
+	if err != nil { die("Error opening \"%s\" for read: %s", os.Args[1], err) }
+
+	input := make(map[string]reaction)
+	n := 1
+
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		// read configuration from stdin
+	}
+
+	// grab the default hash so we don't have to look it up a million times
+	default_reaction := input["default"]
+
+	scanner = bufio.NewScanner(rebase_todo)
+	for scanner.Scan() {
+		// read rebase todo file and write a revised version to stdout
 	}
 }
