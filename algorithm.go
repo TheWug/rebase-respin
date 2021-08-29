@@ -81,8 +81,7 @@ func readSettings(input map[string]reaction, scanner myscanner) (map[string]reac
 
 
 func parseInput(config map[string]reaction, scanner myscanner) (*output_node, *output_node, error) {
-	var head, tail output_node
-	head.next, tail.prev = &tail, &head
+	head, tail := newList()
 
 	commits_by_message := make(map[string]*output_node)
 
@@ -95,7 +94,7 @@ func parseInput(config map[string]reaction, scanner myscanner) (*output_node, *o
 
 		// blank lines and comments get passed through verbatim
 		if len(line) == 0 || strings.HasPrefix(line, "#") {
-			push(raw_line, &head)
+			push(raw_line, head)
 			continue
 		}
 
@@ -106,7 +105,7 @@ func parseInput(config map[string]reaction, scanner myscanner) (*output_node, *o
 		// if we don't recognize the command, just repeat it verbatim and proceed to the next.
 		mode, ok := commands[token]
 		if !ok {
-			push(raw_line, &head)
+			push(raw_line, head)
 			continue
 		}
 
@@ -123,17 +122,17 @@ func parseInput(config map[string]reaction, scanner myscanner) (*output_node, *o
 		// override is special, it means "keep the line verbatim", but we might
 		// still want to process trailers
 		if r.mode == commands["override"] {
-			push_commit(raw_line, remainder, r.auxiliary, &head, commits_by_message)
+			push_commit(raw_line, remainder, r.auxiliary, head, commits_by_message)
 		} else if r.mode == commands["fixup"] && mode != commands["fixup"] {
-			e := relocate_commit(fmt.Sprintf("%s %s %s", mode, hash, remainder), remainder, r.auxiliary, &head, commits_by_message)
+			e := relocate_commit(fmt.Sprintf("%s %s %s", mode, hash, remainder), remainder, r.auxiliary, head, commits_by_message)
 			if e != nil { return nil, nil, e }
 		} else if r.mode == commands["squash"] && mode != commands["squash"] {
-			e := relocate_commit(fmt.Sprintf("%s %s %s", mode, hash, remainder), remainder, r.auxiliary, &head, commits_by_message)
+			e := relocate_commit(fmt.Sprintf("%s %s %s", mode, hash, remainder), remainder, r.auxiliary, head, commits_by_message)
 			if e != nil { return nil, nil, e }
 		} else {
-			push_commit(fmt.Sprintf("%s %s %s", mode, hash, remainder), remainder, r.auxiliary, &head, commits_by_message)
+			push_commit(fmt.Sprintf("%s %s %s", mode, hash, remainder), remainder, r.auxiliary, head, commits_by_message)
 		}
 	}
 
-	return &head, &tail, nil
+	return head, tail, nil
 }

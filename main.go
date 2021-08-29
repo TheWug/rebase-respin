@@ -32,6 +32,12 @@ type output_node struct {
 	trailers []trailer
 }
 
+func newList() (*output_node, *output_node) {
+	head, tail := &output_node{}, &output_node{}
+	head.next, tail.prev = tail, head
+	return head, tail
+}
+
 func (this *output_node) insert_after(n *output_node) {
 	next := this.next
 	next.prev, this.next = n, n
