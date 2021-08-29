@@ -1,5 +1,11 @@
 package main
 
+import (
+	"fmt"
+	"os"
+	"unicode"
+)
+
 type command string
 type trailer interface {
 	command() string
@@ -44,6 +50,54 @@ var commands = map[string]command{
 	"merge":    "",
 	"m":        "",
 	"":         "",
+}
+
+// grab one token off the front of a string.
+// token boundaries are whitespace.
+// whitespace is trimmed from the remainder string.
+// if there is no suitable token, an empty string is returned ad infinitum.
+func grab(s string) (string, string) {
+	var i int
+	var r rune
+	var end bool
+	end = true
+	for i, r = range s {
+		if !unicode.IsSpace(r) {
+			end = false
+			break
+		}
+	}
+	if end { i = len(s) }
+	s = s[i:]
+
+	end = true
+	for i, r = range s {
+		if unicode.IsSpace(r) {
+			end = false
+			break
+		}
+	}
+	if end { i = len(s) }
+	out := s[:i]
+	s = s[i:]
+
+	end = true
+	for i, r = range s {
+		if !unicode.IsSpace(r) {
+			end = false
+			break
+		}
+	}
+	if end { i = len(s) }
+	s = s[i:]
+
+	return out, s
+}
+
+// fail_to_parse_args complains and exits the program if called.
+func die(format string, objs ...interface{}) {
+	println(fmt.Sprintf(format, objs...))
+	os.Exit(1)
 }
 
 func main() {
