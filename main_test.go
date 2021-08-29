@@ -89,3 +89,58 @@ func Test_push(t *testing.T) {
 		})
 	}
 }
+
+func Test_push_commit(t *testing.T) {
+	trailers := []trailer{nil, break_trailer{}, exec_trailer{cmd: "foo"}, exec_trailer{cmd: "bar"}}
+
+	testcases := map[string]struct {
+		inputs [][]string
+		t []trailer
+		conflicts int
+	}{
+		"duplicates": {[][]string{[]string{"1", "msg1"}, []string{"2", "msg2"}, []string{"3", "msg1"}}, trailers[1:4], 1},
+		"several": {[][]string{[]string{"1", "msg1"}, []string{"2", "msg2"}, []string{"3", "msg3"}}, trailers[0:3], 0},
+		"one": {[][]string{[]string{"1", "msg1"}}, trailers[1:2], 0},
+	}
+
+	for k, v := range testcases {
+		t.Run(k, func(t *testing.T) {
+			cmap := make(map[string]*output_node)
+
+			head, tail := newList()
+			for i, s := range v.inputs {
+				push_commit(s[0], s[1], []trailer{v.t[i]}, head, cmap)
+			}
+
+			i := 0
+			for node := tail.prev; node != head; node = node.prev {
+				if i >= len(v.inputs) {
+					t.Errorf("Out of range: %d (max %d)", i, len(v.inputs))
+					if i > 10 { break }
+				} else {
+					if node.line != v.inputs[i][0] {
+						t.Errorf("Unexpected value at position %d: got %s, expected %s", i, v.inputs[i][0], node.line)
+					}
+					if node.trailers[0] != v.t[i] {
+						t.Errorf("Unexpected trailer at position %d: got %v, expected %v", i, v.t[i], node.trailers[i])
+					}
+				}
+				i++
+			}
+
+			if i - v.conflicts != len(cmap) {
+				t.Errorf("Wrong number of distinct commits: expected %d, got %d", i - v.conflicts, len(cmap))
+			}
+
+			if i != len(v.inputs) {
+				t.Errorf("Wrong number of values: expected %d, got %d", len(v.inputs), i)
+			}
+
+			for k, v := range cmap {
+				if k != v.msg {
+					t.Errorf("Commit message map has bad entry: %s -> %s", k, v.msg)
+				}
+			}
+		})
+	}
+}
