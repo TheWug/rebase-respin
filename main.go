@@ -128,39 +128,10 @@ func main() {
 	rebase_todo, err := os.Open(os.Args[1])
 	if err != nil { die("Error opening \"%s\" for read: %s", os.Args[1], err) }
 
-	input := make(map[string]reaction)
-	n := 1
+	config := make(map[string]reaction)
 
-	scanner := bufio.NewScanner(os.Stdin)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-
-		// discard blank lines
-		if len(line) == 0 || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		// grab a command, and barf if we don't recognize it
-		token, line := grab(line)
-		mode, ok := commands[token]
-		if !ok { die("Got a junk rebase command: %s (line %d)", token, n) }
-
-		// grab a hash and barf if its empty
-		hash, line := grab(line)
-		if len(hash) == 0 { die("Missing hash string (line %d)", n) }
-
-		// look up the reaction for this hash and modify it.
-		r := input[hash]
-		if mode == commands["break"] {
-			r.auxiliary = append(r.auxiliary, break_trailer{})
-		} else if mode == commands["exec"] {
-			r.auxiliary = append(r.auxiliary, exec_trailer{cmd: line})
-		} else {
-			r.mode = mode
-		}
-		input[hash] = r
-		n++
-	}
+	config, err = readSettings(config, bufio.NewScanner(os.Stdin))
+	if err != nil { die("%s", err) }
 
 	// grab the default hash so we don't have to look it up a million times
 	default_reaction := input["default"]
@@ -201,7 +172,7 @@ func main() {
 		}
 	}
 
-	scanner = bufio.NewScanner(rebase_todo)
+	scanner := bufio.NewScanner(rebase_todo)
 	for scanner.Scan() {
 		raw_line := scanner.Text()
 		line := strings.TrimSpace(raw_line)
