@@ -30,6 +30,7 @@ type output_node struct {
 	next, prev *output_node
 	line string
 	msg string
+	trailers []trailer
 }
 
 func (this *output_node) insert_after(n *output_node) {
@@ -196,6 +197,42 @@ func main() {
 	// grab the default hash so we don't have to look it up a million times
 	default_reaction := input["default"]
 
+	commits_by_message := make(map[string]*output_node)
+	var head, tail output_node
+	head.next, tail.prev = &tail, &head
+
+	push := func(s string) {
+		head.insert_after(&output_node{line: s})
+	}
+
+	push_commit := func(s, msg string, t []trailer) {
+		node := &output_node{line: s, msg: msg, trailers: t}
+		commits_by_message[msg] = node
+		head.insert_after(node)
+	}
+
+	relocate_commit := func(s, msg string, t []trailer) {
+		node := &output_node{line: s, msg: msg, trailers: t}
+		commits_by_message[msg] = node
+		for {
+			token, new_msg := grab(msg)
+			if token != "fixup!" && token != "squash!" {
+				die("Couldn't figure out where to place commit: %s", s)
+			}
+
+			old_node, ok := commits_by_message[new_msg]
+			if ok {
+				for strings.Contains(old_node.msg, new_msg) && old_node.prev != nil {
+					old_node = old_node.prev
+				}
+				old_node.insert_after(node)
+				return
+			}
+
+			msg = new_msg
+		}
+	}
+
 	scanner = bufio.NewScanner(rebase_todo)
 	for scanner.Scan() {
 		raw_line := scanner.Text()
@@ -203,7 +240,7 @@ func main() {
 
 		// blank lines and comments get passed through verbatim
 		if len(line) == 0 || strings.HasPrefix(line, "#") {
-			fmt.Println(raw_line)
+			push(raw_line)
 			continue
 		}
 
@@ -212,9 +249,9 @@ func main() {
 		hash, remainder := grab(remainder)
 
 		// if we don't recognize the command, just repeat it verbatim and proceed to the next.
-		_, ok := commands[token]
+		mode, ok := commands[token]
 		if !ok {
-			fmt.Println(raw_line)
+			push(raw_line)
 			continue
 		}
 
@@ -231,13 +268,20 @@ func main() {
 		// override is special, it means "keep the line verbatim", but we might
 		// still want to process trailers
 		if r.mode == commands["override"] {
-			fmt.Println(raw_line)
+			push_commit(raw_line, remainder, r.auxiliary)
+		} else if r.mode == commands["fixup"] && mode != commands["fixup"] {
+			relocate_commit(fmt.Sprintf("%s %s %s", mode, hash, remainder), remainder, r.auxiliary)
+		} else if r.mode == commands["squash"] && mode != commands["squash"] {
+			relocate_commit(fmt.Sprintf("%s %s %s", mode, hash, remainder), remainder, r.auxiliary)
 		} else {
-			fmt.Println(r.mode, hash, remainder)
+			push_commit(fmt.Sprintf("%s %s %s", mode, hash, remainder), remainder, r.auxiliary)
 		}
+	}
 
-		for _, aux := range r.auxiliary {
-			fmt.Println(aux.command())
+	for node := tail.prev; node != &head; node = node.prev {
+		fmt.Println(node.line)
+		for _, t := range node.trailers {
+			fmt.Println(t.command())
 		}
 	}
 }
