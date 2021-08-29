@@ -57,3 +57,35 @@ func Test_grab(t *testing.T) {
 		})
 	}
 }
+
+func Test_push(t *testing.T) {
+	testcases := map[string]struct {
+		inputs []string
+	}{
+		"normal": {[]string{"123", "456", "789"}},
+	}
+
+	for k, v := range testcases {
+		t.Run(k, func(t *testing.T) {
+			head, tail := newList()
+			for _, s := range v.inputs {
+				push(s, head)
+			}
+
+			i := 0
+			for node := tail.prev; node != head; node = node.prev {
+				if i >= len(v.inputs) {
+					t.Errorf("Out of range: %d (max %d)", i, len(v.inputs))
+					if i > 10 { break }
+				} else if node.line != v.inputs[i] {
+					t.Errorf("Unexpected value at position %d: got %s, expected %s", i, v.inputs[i], node.line)
+				}
+				i++
+			}
+
+			if i != len(v.inputs) {
+				t.Errorf("Wrong number of values: expected %d, got %d", len(v.inputs), i)
+			}
+		})
+	}
+}
