@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strings"
 	"unicode"
 )
 
@@ -151,7 +152,33 @@ func main() {
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
-		// read configuration from stdin
+		line := strings.TrimSpace(scanner.Text())
+
+		// discard blank lines
+		if len(line) == 0 || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// grab a command, and barf if we don't recognize it
+		token, line := grab(line)
+		mode, ok := commands[token]
+		if !ok { die("Got a junk rebase command: %s (line %d)", token, n) }
+
+		// grab a hash and barf if its empty
+		hash, line := grab(line)
+		if len(hash) == 0 { die("Missing hash string (line %d)", n) }
+
+		// look up the reaction for this hash and modify it.
+		r := input[hash]
+		if mode == commands["break"] {
+			r.auxiliary = append(r.auxiliary, break_trailer{})
+		} else if mode == commands["exec"] {
+			r.auxiliary = append(r.auxiliary, exec_trailer{cmd: line})
+		} else {
+			r.mode = mode
+		}
+		input[hash] = r
+		n++
 	}
 
 	// grab the default hash so we don't have to look it up a million times
@@ -159,6 +186,46 @@ func main() {
 
 	scanner = bufio.NewScanner(rebase_todo)
 	for scanner.Scan() {
-		// read rebase todo file and write a revised version to stdout
+		raw_line := scanner.Text()
+		line := strings.TrimSpace(raw_line)
+
+		// blank lines and comments get passed through verbatim
+		if len(line) == 0 || strings.HasPrefix(line, "#") {
+			fmt.Println(raw_line)
+			continue
+		}
+
+		// grab 2 tokens from the input
+		token, remainder := grab(line)
+		hash, remainder := grab(remainder)
+
+		// if we don't recognize the command, just repeat it verbatim and proceed to the next.
+		_, ok := commands[token]
+		if !ok {
+			fmt.Println(raw_line)
+			continue
+		}
+
+		// look up a specific reaction to this hash, if one exists
+		specific_reaction, ok := input[hash]
+
+		// start with the default settings, and override them if necessary
+		r := default_reaction
+		if ok {
+			r.mode = specific_reaction.mode
+			r.auxiliary = append(r.auxiliary, specific_reaction.auxiliary...)
+		}
+
+		// override is special, it means "keep the line verbatim", but we might
+		// still want to process trailers
+		if r.mode == commands["override"] {
+			fmt.Println(raw_line)
+		} else {
+			fmt.Println(r.mode, hash, remainder)
+		}
+
+		for _, aux := range r.auxiliary {
+			fmt.Println(aux.command())
+		}
 	}
 }
