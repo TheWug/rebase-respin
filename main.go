@@ -26,6 +26,18 @@ type reaction struct {
 	auxiliary []trailer
 }
 
+type output_node struct {
+	next, prev *output_node
+	line string
+	msg string
+}
+
+func (this *output_node) insert_after(n *output_node) {
+	next := this.next
+	next.prev, this.next = n, n
+	n.prev, n.next = this, next
+}
+
 var commands = map[string]command{
 	"pick":   "pick",
 	"p":      "pick",
