@@ -96,6 +96,7 @@ func readSettings(input map[string]reaction, scanner myscanner) (map[string]reac
 
 func parseInput(config map[string]reaction, scanner myscanner) (*output_node, *output_node, error) {
 	head, tail := newList()
+	var last *output_node
 
 	commits_by_message := make(map[string]*output_node)
 
@@ -133,18 +134,24 @@ func parseInput(config map[string]reaction, scanner myscanner) (*output_node, *o
 			r.auxiliary = append(r.auxiliary, specific_reaction.auxiliary...)
 		}
 
-		// override is special, it means "keep the line verbatim", but we might
-		// still want to process trailers
+		// override is special, it means "keep the line verbatim", so grab the command from the line
 		if r.mode == commands["override"] {
-			push_commit(raw_line, remainder, r.auxiliary, head, commits_by_message)
-		} else if r.mode == commands["fixup"] && mode != commands["fixup"] {
-			e := relocate_commit(fmt.Sprintf("%s %s %s", mode, hash, remainder), remainder, r.auxiliary, head, commits_by_message)
-			if e != nil { return nil, nil, e }
-		} else if r.mode == commands["squash"] && mode != commands["squash"] {
-			e := relocate_commit(fmt.Sprintf("%s %s %s", mode, hash, remainder), remainder, r.auxiliary, head, commits_by_message)
-			if e != nil { return nil, nil, e }
+			r.mode = command(mode)
+		}
+
+		if r.mode == commands["fixup"] || r.mode == commands["squash"] {
+			if mode == commands["fixup"] || mode == commands["squash"] {
+				// if the command came in as a fixup/squash, and is configured to remain a fixup/squash, then
+				// it should remain bound to the commit it was originally attached to if that commit moves.
+				last = push_commit(fmt.Sprintf("%s %s %s", r.mode, hash, remainder), remainder, r.auxiliary, last, commits_by_message)
+			} else {
+				// if we are converting it into a fixup/squash, then relocate it.
+				var e error
+				last, e = relocate_commit(fmt.Sprintf("%s %s %s", r.mode, hash, remainder), remainder, r.auxiliary, last, commits_by_message)
+				if e != nil { return nil, nil, e }
+			}
 		} else {
-			push_commit(fmt.Sprintf("%s %s %s", mode, hash, remainder), remainder, r.auxiliary, head, commits_by_message)
+			last = push_commit(fmt.Sprintf("%s %s %s", r.mode, hash, remainder), remainder, r.auxiliary, head, commits_by_message)
 		}
 	}
 
