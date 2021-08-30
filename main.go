@@ -22,6 +22,7 @@ func (t exec_trailer) command() string { return fmt.Sprintf("exec %s", t.cmd) }
 
 type reaction struct {
 	mode command
+	extra string
 	auxiliary []trailer
 }
 

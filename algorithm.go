@@ -85,6 +85,7 @@ func readSettings(input map[string]reaction, scanner myscanner) (map[string]reac
 			r.auxiliary = append(r.auxiliary, exec_trailer{cmd: line})
 		} else {
 			r.mode = mode
+			r.extra = line
 		}
 		input[hash] = r
 		n++
@@ -132,6 +133,7 @@ func parseInput(config map[string]reaction, scanner myscanner) (*output_node, *o
 		if ok {
 			r.mode = specific_reaction.mode
 			r.auxiliary = append(r.auxiliary, specific_reaction.auxiliary...)
+			r.extra = specific_reaction.extra
 		}
 
 		// override is special, it means "keep the line verbatim", so grab the command from the line
