@@ -18,21 +18,29 @@ func strip_fixup_squash(msg string) string {
 	return msg
 }
 
-func push_commit(s, msg string, t []trailer, head *output_node, commits_by_message map[string]*output_node) *output_node {
+func push_commit(s, msg, hash string, t []trailer, head *output_node, commits_by_message, commits_by_hash map[string]*output_node) *output_node {
 	orig_msg := msg
 	msg = strip_fixup_squash(msg)
 
 	node := &output_node{line: s, msg: orig_msg, trailers: t}
 	commits_by_message[msg] = node
+	commits_by_hash[hash] = node
 	head.insert_after(node)
 	return head
 }
 
-func relocate_commit(s, msg string, t []trailer, head *output_node, commits_by_message map[string]*output_node) (*output_node, error) {
+func relocate_commit(s, msg, hash, after string, t []trailer, head *output_node, commits_by_message, commits_by_hash map[string]*output_node) (*output_node, error) {
 	orig_msg := msg
 	msg = strip_fixup_squash(msg)
 
-	if orig_msg != msg {
+	if after != "" {
+		// if after is specified, use it to look up a new commit to attach to with precedence over all other methods.
+		var ok bool
+		head, ok = commits_by_hash[after]
+		if !ok { head, ok = commits_by_message[after] }
+		if !ok { return nil, fmt.Errorf("Can't apply fixup (subject commit is missing: %s)", after) }
+		head = head.prev
+	} else if orig_msg != msg {
 		// if it is a fixup commit, look up the commit to apply it to by commit message.
 		// it is an error to try to process a fixup which attaches to a commit outside the scope of the rebase.
 		var ok bool
@@ -48,6 +56,7 @@ func relocate_commit(s, msg string, t []trailer, head *output_node, commits_by_m
 	head.insert_after(node)
 
 	commits_by_message[msg] = node
+	commits_by_hash[hash] = node
 
 	return head, nil
 }
@@ -100,6 +109,7 @@ func parseInput(config map[string]reaction, scanner myscanner) (*output_node, *o
 	var last *output_node
 
 	commits_by_message := make(map[string]*output_node)
+	commits_by_hash := make(map[string]*output_node)
 
 	// grab the default hash so we don't have to look it up a million times
 	default_reaction := config["default"]
@@ -145,15 +155,15 @@ func parseInput(config map[string]reaction, scanner myscanner) (*output_node, *o
 			if mode == commands["fixup"] || mode == commands["squash"] {
 				// if the command came in as a fixup/squash, and is configured to remain a fixup/squash, then
 				// it should remain bound to the commit it was originally attached to if that commit moves.
-				last = push_commit(fmt.Sprintf("%s %s %s", r.mode, hash, remainder), remainder, r.auxiliary, last, commits_by_message)
+				last = push_commit(fmt.Sprintf("%s %s %s", r.mode, hash, remainder), remainder, hash, r.auxiliary, last, commits_by_message, commits_by_hash)
 			} else {
 				// if we are converting it into a fixup/squash, then relocate it.
 				var e error
-				last, e = relocate_commit(fmt.Sprintf("%s %s %s", r.mode, hash, remainder), remainder, r.auxiliary, last, commits_by_message)
+				last, e = relocate_commit(fmt.Sprintf("%s %s %s", r.mode, hash, remainder), remainder, hash, r.extra, r.auxiliary, last, commits_by_message, commits_by_hash)
 				if e != nil { return nil, nil, e }
 			}
 		} else {
-			last = push_commit(fmt.Sprintf("%s %s %s", r.mode, hash, remainder), remainder, r.auxiliary, head, commits_by_message)
+			last = push_commit(fmt.Sprintf("%s %s %s", r.mode, hash, remainder), remainder, hash, r.auxiliary, head, commits_by_message, commits_by_hash)
 		}
 	}
 

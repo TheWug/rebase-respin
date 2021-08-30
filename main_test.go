@@ -124,18 +124,19 @@ func Test_push_commit(t *testing.T) {
 		t []trailer
 		conflicts int
 	}{
-		"duplicates": {[][]string{[]string{"1", "msg1"}, []string{"2", "msg2"}, []string{"3", "msg1"}}, trailers[1:4], 1},
-		"several": {[][]string{[]string{"1", "msg1"}, []string{"2", "msg2"}, []string{"3", "msg3"}}, trailers[0:3], 0},
-		"one": {[][]string{[]string{"1", "msg1"}}, trailers[1:2], 0},
+		"duplicates": {[][]string{[]string{"1", "msg1", "111"}, []string{"2", "msg2", "222"}, []string{"3", "msg1", "333"}}, trailers[1:4], 1},
+		"several": {[][]string{[]string{"1", "msg1", "111"}, []string{"2", "msg2", "222"}, []string{"3", "msg3", "333"}}, trailers[0:3], 0},
+		"one": {[][]string{[]string{"1", "msg1", "111"}}, trailers[1:2], 0},
 	}
 
 	for k, v := range testcases {
 		t.Run(k, func(t *testing.T) {
 			cmap := make(map[string]*output_node)
+			hmap := make(map[string]*output_node)
 
 			head, tail := newList()
 			for i, s := range v.inputs {
-				push_commit(s[0], s[1], []trailer{v.t[i]}, head, cmap)
+				push_commit(s[0], s[1], s[2], []trailer{v.t[i]}, head, cmap, hmap)
 			}
 
 			i := 0
@@ -157,9 +158,18 @@ func Test_push_commit(t *testing.T) {
 			if i - v.conflicts != len(cmap) {
 				t.Errorf("Wrong number of distinct commits: expected %d, got %d", i - v.conflicts, len(cmap))
 			}
+			if i != len(hmap) {
+				t.Errorf("Wrong number of distinct hashes: expected %d, got %d", i, len(hmap))
+			}
 
 			if i != len(v.inputs) {
 				t.Errorf("Wrong number of values: expected %d, got %d", len(v.inputs), i)
+			}
+
+			for _, x := range v.inputs {
+				if _, ok := hmap[x[2]]; !ok {
+					t.Errorf("Hash map has missing entry: %s", x[2])
+				}
 			}
 
 			for k, v := range cmap {
@@ -179,8 +189,9 @@ func Test_relocate_commit(t *testing.T) {
 		output []output_node
 		expected_err string
 		cmap map[string]int
+		hmap map[string]int
 
-		line, msg string
+		line, msg, hash, after string
 		trailer trailer
 		write_out_index int
 	}{
@@ -188,15 +199,15 @@ func Test_relocate_commit(t *testing.T) {
 			[]output_node{},
 			[]output_node{output_node{}},
 			"",
-			map[string]int{},
-			"p 123 m1", "m1", trailers[0], 0,
+			map[string]int{}, map[string]int{},
+			"p 123 m1", "m1", "123", "", trailers[0], 0,
 		},
 		"second-collide": {
 			[]output_node{output_node{line: "p 123 test", msg: "test", trailers: trailers[0:1]}},
 			[]output_node{output_node{line: "p 123 test", msg: "test", trailers: trailers[0:1]}, output_node{}},
 			"",
-			map[string]int{"test": 0},
-			"p 456 fixup! test", "fixup! test", trailers[1], 1,
+			map[string]int{"test": 0}, map[string]int{"123": 0},
+			"p 456 fixup! test", "fixup! test", "456", "", trailers[1], 1,
 		},
 		"middle-collide": {
 			[]output_node{output_node{line: "p 123 test", msg: "test", trailers: trailers[0:1]},
@@ -205,8 +216,8 @@ func Test_relocate_commit(t *testing.T) {
 			              output_node{},
 			              output_node{line: "p 234 test2", msg: "test2", trailers: trailers[1:2]}},
 			"",
-			map[string]int{"test": 0, "test2": 1},
-			"p 456 fixup! test", "fixup! test", trailers[2], 1,
+			map[string]int{"test": 0, "test2": 1}, map[string]int{"123": 0, "234": 1},
+			"p 456 fixup! test", "fixup! test", "456", "", trailers[2], 1,
 		},
 		"multi-fixup": {
 			[]output_node{output_node{line: "p 123 test", msg: "test", trailers: trailers[0:1]},
@@ -217,8 +228,8 @@ func Test_relocate_commit(t *testing.T) {
 			              output_node{},
 			              output_node{line: "p 345 test2", msg: "test2", trailers: trailers[1:2]}},
 			"",
-			map[string]int{"test": 1, "test2": 2},
-			"p 456 fixup! test", "fixup! test", trailers[3], 2,
+			map[string]int{"test": 1, "test2": 2}, map[string]int{"123": 0, "234": 1, "345": 2},
+			"p 456 fixup! test", "fixup! test", "456", "", trailers[3], 2,
 		},
 		"nested-fixup": {
 			[]output_node{output_node{line: "p 123 test", msg: "test", trailers: trailers[0:1]},
@@ -231,8 +242,8 @@ func Test_relocate_commit(t *testing.T) {
 			              output_node{},
 			              output_node{line: "p 345 test2", msg: "test2", trailers: trailers[1:2]}},
 			"",
-			map[string]int{"test": 2, "test2": 3},
-			"p 456 fixup! test", "fixup! test", trailers[3], 3,
+			map[string]int{"test": 2, "test2": 3}, map[string]int{"123": 0, "234": 1, "567": 2, "345": 3},
+			"p 456 fixup! test", "fixup! test", "456", "", trailers[3], 3,
 		},
 	}
 
@@ -247,9 +258,14 @@ func Test_relocate_commit(t *testing.T) {
 			for k, vv := range v.cmap {
 				cmap[k] = &v.input[vv]
 			}
+			hmap := make(map[string]*output_node)
+			for k, vv := range v.hmap {
+				hmap[k] = &v.input[vv]
+			}
 
 			oldnode := cmap[strip_fixup_squash(v.msg)]
-			_, err := relocate_commit(v.line, v.msg, []trailer{v.trailer}, head, cmap)
+			if _, ok := hmap[v.hash]; ok { t.Errorf("Hash present in map before starting! %s", v.hash) }
+			_, err := relocate_commit(v.line, v.msg, v.hash, v.after, []trailer{v.trailer}, head, cmap, hmap)
 
 			if err == nil && v.expected_err != "" || err != nil && (v.expected_err == "" || !strings.Contains(err.Error(), v.expected_err)) {
 				t.Errorf("Unexpected error: got '%v', wanted '%s'", err, v.expected_err)
@@ -260,6 +276,7 @@ func Test_relocate_commit(t *testing.T) {
 			if oldnode == cmap[strip_fixup_squash(v.msg)] {
 				t.Errorf("Commit message map for %s was not updated!", v.msg)
 			}
+			if _, ok := hmap[v.hash]; !ok { t.Errorf("Hash not present in map after starting! %s", v.hash) }
 
 			i := 0
 			for node := tail.prev; node != head; node = node.prev {
@@ -291,8 +308,10 @@ func Test_readSettings(t *testing.T) {
 				"1153": reaction{mode: commands["edit"]},
 				"1121": reaction{mode: commands["fixup"]},
 				"1123": reaction{mode: commands["fixup"]},
+				"1125": reaction{mode: commands["fixup"], extra: "5555"},
 				"1131": reaction{mode: commands["squash"]},
 				"1133": reaction{mode: commands["squash"]},
+				"1135": reaction{mode: commands["squash"], extra: "This is a string"},
 				"1161": reaction{mode: commands["drop"]},
 				"1163": reaction{mode: commands["drop"]},
 				"1171": reaction{mode: commands["override"], auxiliary: []trailer{exec_trailer{cmd: "./test.sh arg1"}}},
@@ -311,8 +330,10 @@ edit     1151
   e      1153
 fixup    1121
   f      1123
+  f      1125 5555
 squash   1131
   s      1133
+  s      1135 This is a string
 drop     1161
   d      1163
 exec     1171 ./test.sh arg1
@@ -357,7 +378,7 @@ pick 1111
 reword 1111
 edit 1111
 fixup 1111
-squash 1111
+squash 1111 extraaaa
 drop 1111
 exec 1111 ./foobar
 break 1111
@@ -482,6 +503,17 @@ func Test_parseInput(t *testing.T) {
 				output_node{line: "pick 111 m1", msg: "m1"},
 				output_node{line: "fixup 333 fixup! m1", msg: "fixup! m1"},
 				output_node{line: "fixup 444 m4", msg: "m4"},
+				output_node{line: "pick 222 m2", msg: "m2"},
+			},
+		},
+		"directed-relocate": {
+			map[string]reaction{
+				"333": reaction{mode: commands["fixup"], extra: "m1"},
+				"444": reaction{mode: commands["fixup"], extra: "111"},
+			}, "pick 111 m1\npick 222 m2\npick 333 m3\npick 444 m4", "", []output_node{
+				output_node{line: "pick 111 m1", msg: "m1"},
+				output_node{line: "fixup 444 m4", msg: "m4"},
+				output_node{line: "fixup 333 m3", msg: "m3"},
 				output_node{line: "pick 222 m2", msg: "m2"},
 			},
 		},
