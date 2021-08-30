@@ -61,6 +61,27 @@ func Test_grab(t *testing.T) {
 	}
 }
 
+func Test_strip_fixup_squash(t *testing.T) {
+	testcases := map[string]struct {
+		in, out string
+	}{
+		"no-op": {"unchanged", "unchanged"},
+		"simple-fixup": {"fixup! changed", "changed"},
+		"simple-squash": {"squash! changed", "changed"},
+		"complex-multiple-weird-whitespace": {"\tfixup!     squash!\tchanged with some more words", "changed with some more words"},
+	}
+
+	for k, v := range testcases {
+		t.Run(k, func(t *testing.T) {
+			out := strip_fixup_squash(v.in)
+
+			if v.out != out {
+				t.Errorf("Unexpected result: got %s, expected %s", out, v.out)
+			}
+		})
+	}
+}
+
 func Test_push(t *testing.T) {
 	testcases := map[string]struct {
 		inputs []string
