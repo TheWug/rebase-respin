@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bufio"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -245,6 +247,115 @@ func Test_relocate_commit(t *testing.T) {
 			}
 
 			if i != len(v.output) { t.Errorf("Wrong number of output nodes: got %d, expected %d", i, len(v.output)) }
+		})
+	}
+}
+
+func Test_readSettings(t *testing.T) {
+	testcases := map[string]struct{
+		input, output map[string]reaction
+		input_data string
+		expected_err string
+	}{
+		"individual": {
+			map[string]reaction{},
+			map[string]reaction{
+				"1111": reaction{mode: commands["pick"]},
+				"1113": reaction{mode: commands["pick"]},
+				"1141": reaction{mode: commands["reword"]},
+				"1143": reaction{mode: commands["reword"]},
+				"1151": reaction{mode: commands["edit"]},
+				"1153": reaction{mode: commands["edit"]},
+				"1121": reaction{mode: commands["fixup"]},
+				"1123": reaction{mode: commands["fixup"]},
+				"1131": reaction{mode: commands["squash"]},
+				"1133": reaction{mode: commands["squash"]},
+				"1161": reaction{mode: commands["drop"]},
+				"1163": reaction{mode: commands["drop"]},
+				"1171": reaction{mode: commands["override"], auxiliary: []trailer{exec_trailer{cmd: "./test.sh arg1"}}},
+				"1173": reaction{mode: commands["override"], auxiliary: []trailer{exec_trailer{cmd: "./test.sh arg3"}}},
+				"1181": reaction{mode: commands["override"], auxiliary: []trailer{break_trailer{}}},
+				"1183": reaction{mode: commands["override"], auxiliary: []trailer{break_trailer{}}},
+				"1191": reaction{mode: commands["override"]},
+				"1193": reaction{mode: commands["override"]},
+			},
+`
+pick     1111
+  p      1113
+reword   1141
+  r      1143
+edit     1151
+  e      1153
+fixup    1121
+  f      1123
+squash   1131
+  s      1133
+drop     1161
+  d      1163
+exec     1171 ./test.sh arg1
+  x      1173 ./test.sh arg3
+break    1181
+  b      1183
+override 1191
+  o      1193
+`, "",
+		},
+		"bad-command": {
+			map[string]reaction{},
+			map[string]reaction{},
+			"missing-command 1111", "Got a junk rebase command",
+		},
+		"missing-hash": {
+			map[string]reaction{},
+			map[string]reaction{},
+			"pick 1111\n  pick  \npick 1112", "Missing hash string",
+		},
+		"missing-exec-command": {
+			map[string]reaction{},
+			map[string]reaction{
+				"1111": reaction{mode: commands["pick"]},
+				"1112": reaction{mode: commands["pick"]},
+				"2222": reaction{mode: commands["override"], auxiliary: []trailer{exec_trailer{cmd: ""}}},
+			},
+			"pick 1111\n  exec 2222  \npick 1112", "",
+		},
+		"stack-everything-up": {
+			map[string]reaction{},
+			map[string]reaction{
+				"1111": reaction{mode: commands["squash"], auxiliary: []trailer{
+					exec_trailer{cmd: "./foobar"},
+					break_trailer{},
+					exec_trailer{cmd: "./foobar2"},
+					break_trailer{},
+				}},
+			},
+`
+pick 1111
+reword 1111
+edit 1111
+fixup 1111
+squash 1111
+drop 1111
+exec 1111 ./foobar
+break 1111
+exec 1111 ./foobar2
+break 1111
+squash 1111
+`, "",
+		},
+	}
+
+	for k, v := range testcases {
+		t.Run(k, func(t *testing.T) {
+			out, err := readSettings(v.input, bufio.NewScanner(strings.NewReader(v.input_data)))
+
+			if err == nil && v.expected_err != "" || err != nil && (v.expected_err == "" || !strings.Contains(err.Error(), v.expected_err)) {
+				t.Errorf("Unexpected error: got '%v', wanted '%s'", err, v.expected_err)
+			}
+
+			if err != nil { return }
+
+			if !reflect.DeepEqual(v.output, out) { t.Errorf("Unexpected result: got:\n%v\n\n, expected:\n%v\n\n", out, v.output) }
 		})
 	}
 }
