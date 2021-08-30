@@ -18,13 +18,14 @@ func strip_fixup_squash(msg string) string {
 	return msg
 }
 
-func push_commit(s, msg string, t []trailer, head *output_node, commits_by_message map[string]*output_node) {
+func push_commit(s, msg string, t []trailer, head *output_node, commits_by_message map[string]*output_node) *output_node {
 	orig_msg := msg
 	msg = strip_fixup_squash(msg)
 
 	node := &output_node{line: s, msg: orig_msg, trailers: t}
 	commits_by_message[msg] = node
 	head.insert_after(node)
+	return head
 }
 
 func relocate_commit(s, msg string, t []trailer, head *output_node, commits_by_message map[string]*output_node) error {
