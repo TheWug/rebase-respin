@@ -17,7 +17,6 @@ func push_commit(s, msg string, t []trailer, head *output_node, commits_by_messa
 
 func relocate_commit(s, msg string, t []trailer, head *output_node, commits_by_message map[string]*output_node) error {
 	node := &output_node{line: s, msg: msg, trailers: t}
-	commits_by_message[msg] = node
 	for {
 		token, new_msg := grab(msg)
 		if token != "fixup!" && token != "squash!" {
@@ -26,10 +25,18 @@ func relocate_commit(s, msg string, t []trailer, head *output_node, commits_by_m
 
 		old_node, ok := commits_by_message[new_msg]
 		if ok {
-			for strings.Contains(old_node.msg, new_msg) && old_node.prev != nil {
+			for strings.HasSuffix(old_node.msg, new_msg) && old_node.prev != nil {
 				old_node = old_node.prev
 			}
 			old_node.insert_after(node)
+
+			m := node.msg
+			for {
+				commits_by_message[m] = node
+				token, m = grab(m)
+				if token != "fixup!" && token != "squash!" { break }
+			}
+
 			return nil
 		}
 
