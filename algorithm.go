@@ -19,7 +19,10 @@ func strip_fixup_squash(msg string) string {
 }
 
 func push_commit(s, msg string, t []trailer, head *output_node, commits_by_message map[string]*output_node) {
-	node := &output_node{line: s, msg: msg, trailers: t}
+	orig_msg := msg
+	msg = strip_fixup_squash(msg)
+
+	node := &output_node{line: s, msg: orig_msg, trailers: t}
 	commits_by_message[msg] = node
 	head.insert_after(node)
 }
