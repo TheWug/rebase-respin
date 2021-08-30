@@ -163,10 +163,10 @@ func Test_relocate_commit(t *testing.T) {
 	}{
 		"first-missing": {
 			[]output_node{},
-			[]output_node{},
-			"Couldn't figure out",
+			[]output_node{output_node{}},
+			"",
 			map[string]int{},
-			"p 123 m1", "m1", trailers[0], -1,
+			"p 123 m1", "m1", trailers[0], 0,
 		},
 		"second-collide": {
 			[]output_node{output_node{line: "p 123 test", msg: "test", trailers: trailers[0:1]}},
@@ -194,7 +194,7 @@ func Test_relocate_commit(t *testing.T) {
 			              output_node{},
 			              output_node{line: "p 345 test2", msg: "test2", trailers: trailers[1:2]}},
 			"",
-			map[string]int{"test": 0, "fixup! test": 1, "test2": 2},
+			map[string]int{"test": 1, "test2": 2},
 			"p 456 fixup! test", "fixup! test", trailers[3], 2,
 		},
 		"nested-fixup": {
@@ -208,7 +208,7 @@ func Test_relocate_commit(t *testing.T) {
 			              output_node{},
 			              output_node{line: "p 345 test2", msg: "test2", trailers: trailers[1:2]}},
 			"",
-			map[string]int{"test": 0, "fixup! test": 1, "fixup! fixup! test": 2, "test2": 3},
+			map[string]int{"test": 2, "test2": 3},
 			"p 456 fixup! test", "fixup! test", trailers[3], 3,
 		},
 	}
@@ -225,8 +225,8 @@ func Test_relocate_commit(t *testing.T) {
 				cmap[k] = &v.input[vv]
 			}
 
-			oldnode := cmap[v.msg]
-			err := relocate_commit(v.line, v.msg, []trailer{v.trailer}, head, cmap)
+			oldnode := cmap[strip_fixup_squash(v.msg)]
+			_, err := relocate_commit(v.line, v.msg, []trailer{v.trailer}, head, cmap)
 
 			if err == nil && v.expected_err != "" || err != nil && (v.expected_err == "" || !strings.Contains(err.Error(), v.expected_err)) {
 				t.Errorf("Unexpected error: got '%v', wanted '%s'", err, v.expected_err)
@@ -234,7 +234,7 @@ func Test_relocate_commit(t *testing.T) {
 
 			if err != nil { return }
 
-			if oldnode == cmap[v.msg] {
+			if oldnode == cmap[strip_fixup_squash(v.msg)] {
 				t.Errorf("Commit message map for %s was not updated!", v.msg)
 			}
 

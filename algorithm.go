@@ -28,34 +28,28 @@ func push_commit(s, msg string, t []trailer, head *output_node, commits_by_messa
 	return head
 }
 
-func relocate_commit(s, msg string, t []trailer, head *output_node, commits_by_message map[string]*output_node) error {
-	node := &output_node{line: s, msg: msg, trailers: t}
-	for {
-		token, new_msg := grab(msg)
-		if token != "fixup!" && token != "squash!" {
-			return fmt.Errorf("Couldn't figure out where to place commit: %s", s)
-		}
+func relocate_commit(s, msg string, t []trailer, head *output_node, commits_by_message map[string]*output_node) (*output_node, error) {
+	orig_msg := msg
+	msg = strip_fixup_squash(msg)
 
-		old_node, ok := commits_by_message[new_msg]
-		if ok {
-			for strings.HasSuffix(old_node.msg, new_msg) && old_node.prev != nil {
-				old_node = old_node.prev
-			}
-			old_node.insert_after(node)
-
-			m := node.msg
-			for {
-				commits_by_message[m] = node
-				token, m = grab(m)
-				if token != "fixup!" && token != "squash!" { break }
-			}
-
-			return nil
-		}
-
-		msg = new_msg
+	if orig_msg != msg {
+		// if it is a fixup commit, look up the commit to apply it to by commit message.
+		// it is an error to try to process a fixup which attaches to a commit outside the scope of the rebase.
+		var ok bool
+		head, ok = commits_by_message[msg]
+		if !ok { return nil, fmt.Errorf("Can't apply fixup (subject commit is missing: %s)", msg) }
+		head = head.prev
+	} else {
+		// this isn't a designated fixup commit, so just apply it to the head.
+		// in this case, head is already correct (as passed by the caller).
 	}
-	panic("not reached")
+
+	node := &output_node{line: s, msg: orig_msg, trailers: t}
+	head.insert_after(node)
+
+	commits_by_message[msg] = node
+
+	return head, nil
 }
 
 // typical implementer is bufio.Scanner
