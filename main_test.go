@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -141,6 +142,109 @@ func Test_push_commit(t *testing.T) {
 					t.Errorf("Commit message map has bad entry: %s -> %s", k, v.msg)
 				}
 			}
+		})
+	}
+}
+
+func Test_relocate_commit(t *testing.T) {
+	trailers := []trailer{nil, break_trailer{}, exec_trailer{cmd: "foo"}, exec_trailer{cmd: "bar"}}
+
+	testcases := map[string]struct {
+		input []output_node
+		output []output_node
+		expected_err string
+		cmap map[string]int
+
+		line, msg string
+		trailer trailer
+		write_out_index int
+	}{
+		"first-missing": {
+			[]output_node{},
+			[]output_node{},
+			"Couldn't figure out",
+			map[string]int{},
+			"p 123 m1", "m1", trailers[0], -1,
+		},
+		"second-collide": {
+			[]output_node{output_node{line: "p 123 test", msg: "test", trailers: trailers[0:1]}},
+			[]output_node{output_node{line: "p 123 test", msg: "test", trailers: trailers[0:1]}, output_node{}},
+			"",
+			map[string]int{"test": 0},
+			"p 456 fixup! test", "fixup! test", trailers[1], 1,
+		},
+		"middle-collide": {
+			[]output_node{output_node{line: "p 123 test", msg: "test", trailers: trailers[0:1]},
+			              output_node{line: "p 234 test2", msg: "test2", trailers: trailers[1:2]}},
+			[]output_node{output_node{line: "p 123 test", msg: "test", trailers: trailers[0:1]},
+			              output_node{},
+			              output_node{line: "p 234 test2", msg: "test2", trailers: trailers[1:2]}},
+			"",
+			map[string]int{"test": 0, "test2": 1},
+			"p 456 fixup! test", "fixup! test", trailers[2], 1,
+		},
+		"multi-fixup": {
+			[]output_node{output_node{line: "p 123 test", msg: "test", trailers: trailers[0:1]},
+			              output_node{line: "p 234 fixup! test", msg: "fixup! test", trailers: trailers[2:3]},
+			              output_node{line: "p 345 test2", msg: "test2", trailers: trailers[1:2]}},
+			[]output_node{output_node{line: "p 123 test", msg: "test", trailers: trailers[0:1]},
+			              output_node{line: "p 234 fixup! test", msg: "fixup! test", trailers: trailers[2:3]},
+			              output_node{},
+			              output_node{line: "p 345 test2", msg: "test2", trailers: trailers[1:2]}},
+			"",
+			map[string]int{"test": 0, "fixup! test": 1, "test2": 2},
+			"p 456 fixup! test", "fixup! test", trailers[3], 2,
+		},
+		"nested-fixup": {
+			[]output_node{output_node{line: "p 123 test", msg: "test", trailers: trailers[0:1]},
+			              output_node{line: "p 234 fixup! test", msg: "fixup! test", trailers: trailers[2:3]},
+			              output_node{line: "p 567 fixup! fixup! test", msg: "fixup! fixup! test", trailers: trailers[3:4]},
+			              output_node{line: "p 345 test2", msg: "test2", trailers: trailers[1:2]}},
+			[]output_node{output_node{line: "p 123 test", msg: "test", trailers: trailers[0:1]},
+			              output_node{line: "p 234 fixup! test", msg: "fixup! test", trailers: trailers[2:3]},
+			              output_node{line: "p 567 fixup! fixup! test", msg: "fixup! fixup! test", trailers: trailers[3:4]},
+			              output_node{},
+			              output_node{line: "p 345 test2", msg: "test2", trailers: trailers[1:2]}},
+			"",
+			map[string]int{"test": 0, "fixup! test": 1, "fixup! fixup! test": 2, "test2": 3},
+			"p 456 fixup! test", "fixup! test", trailers[3], 3,
+		},
+	}
+
+	for k, v := range testcases {
+		t.Run(k, func(t *testing.T) {
+			if v.write_out_index != -1 { v.output[v.write_out_index] = output_node{line: v.line, msg: v.msg, trailers: []trailer{v.trailer}} }
+
+			head, tail := newList()
+			for i := range v.input { head.insert_after(&v.input[i]) }
+
+			cmap := make(map[string]*output_node)
+			for k, vv := range v.cmap {
+				cmap[k] = &v.input[vv]
+			}
+
+			oldnode := cmap[v.msg]
+			err := relocate_commit(v.line, v.msg, []trailer{v.trailer}, head, cmap)
+
+			if err == nil && v.expected_err != "" || err != nil && (v.expected_err == "" || !strings.Contains(err.Error(), v.expected_err)) {
+				t.Errorf("Unexpected error: got '%v', wanted '%s'", err, v.expected_err)
+			}
+
+			if err != nil { return }
+
+			if oldnode == cmap[v.msg] {
+				t.Errorf("Commit message map for %s was not updated!", v.msg)
+			}
+
+			i := 0
+			for node := tail.prev; node != head; node = node.prev {
+				if node.line != v.output[i].line { t.Errorf("Unexpected line at node %d: got %s, expected %s", i, node.line, v.output[i].line) }
+				if node.msg != v.output[i].msg { t.Errorf("Unexpected message at node %d: got %s, expected %s", i, node.msg, v.output[i].msg) }
+				if node.trailers[0] != v.output[i].trailers[0] { t.Errorf("Unexpected message at node %d: got %v, expected %v", i, node.trailers[0], v.output[i].trailers[0]) }
+				i++
+			}
+
+			if i != len(v.output) { t.Errorf("Wrong number of output nodes: got %d, expected %d", i, len(v.output)) }
 		})
 	}
 }
