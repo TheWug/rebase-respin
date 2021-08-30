@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -377,6 +379,128 @@ squash 1111
 			if err != nil { return }
 
 			if !reflect.DeepEqual(v.output, out) { t.Errorf("Unexpected result: got:\n%v\n\n, expected:\n%v\n\n", out, v.output) }
+		})
+	}
+}
+
+func str(h, t *output_node) string {
+	var b bytes.Buffer
+	for n := h.next; n != t; n = n.next { b.WriteString(fmt.Sprintf("%+v\n", n)) }
+	return b.String()
+}
+
+func Test_parseInput(t *testing.T) {
+	testcases := map[string]struct {
+		input map[string]reaction
+		input_data string
+
+		expected_err string
+		output []output_node
+	}{
+		"simple": {
+			map[string]reaction{
+				"1111": reaction{mode: commands["drop"]},
+			}, "pick 2222 m1\npick 1111 m2\npick 3333 m3\n", "", []output_node{
+				output_node{line: "pick 2222 m1", msg: "m1"},
+				output_node{line: "drop 1111 m2", msg: "m2"},
+				output_node{line: "pick 3333 m3", msg: "m3"},
+			},
+		},
+		"default": {
+			map[string]reaction{
+				"default": reaction{mode:commands["drop"]},
+				"1111": reaction{mode: commands["pick"]},
+			}, "pick 2222 m1\npick 1111 m2\npick 3333 m3\n", "", []output_node{
+				output_node{line: "drop 2222 m1", msg: "m1"},
+				output_node{line: "pick 1111 m2", msg: "m2"},
+				output_node{line: "drop 3333 m3", msg: "m3"},
+			},
+		},
+		"default-exec": {
+			map[string]reaction{
+				"default": reaction{mode:commands["override"], auxiliary: []trailer{exec_trailer{cmd: "./foobar.sh"}}},
+				"1111": reaction{mode: commands["edit"]},
+			}, "pick 2222 m1\npick 1111 m2\npick 3333 m3\n", "", []output_node{
+				output_node{line: "pick 2222 m1", msg: "m1", trailers: []trailer{exec_trailer{cmd: "./foobar.sh"}}},
+				output_node{line: "edit 1111 m2", msg: "m2", trailers: []trailer{exec_trailer{cmd: "./foobar.sh"}}},
+				output_node{line: "pick 3333 m3", msg: "m3", trailers: []trailer{exec_trailer{cmd: "./foobar.sh"}}},
+			},
+		},
+		"fixup-squash": {
+			map[string]reaction{
+				"7777": reaction{mode: commands["fixup"]},
+				"8888": reaction{mode: commands["squash"]},
+			}, "pick 2222 m1\npick 1111 m2\npick 3333 m3\npick 7777 fixup! m1\npick 8888 squash! m2", "", []output_node{
+				output_node{line: "pick 2222 m1", msg: "m1"},
+				output_node{line: "fixup 7777 fixup! m1", msg: "fixup! m1"},
+				output_node{line: "pick 1111 m2", msg: "m2"},
+				output_node{line: "squash 8888 squash! m2", msg: "squash! m2"},
+				output_node{line: "pick 3333 m3", msg: "m3"},
+			},
+		},
+		"multi-fixup-squash": {
+			map[string]reaction{
+				"444": reaction{mode: commands["fixup"]},
+				"555": reaction{mode: commands["squash"]},
+				"666": reaction{mode: commands["fixup"]},
+				"777": reaction{mode: commands["fixup"]},
+				"888": reaction{mode: commands["squash"]},
+			}, "pick 111 m1\npick 222 m2\npick 333 m3\npick 444 fixup! m1\npick 555 squash! m1\npick 666 fixup! fixup! m1\npick 777 fixup! m1\npick 888 squash! squash! m1", "", []output_node{
+				output_node{line: "pick 111 m1", msg: "m1"},
+				output_node{line: "fixup 444 fixup! m1", msg: "fixup! m1"},
+				output_node{line: "squash 555 squash! m1", msg: "squash! m1"},
+				output_node{line: "fixup 666 fixup! fixup! m1", msg: "fixup! fixup! m1"},
+				output_node{line: "fixup 777 fixup! m1", msg: "fixup! m1"},
+				output_node{line: "squash 888 squash! squash! m1", msg: "squash! squash! m1"},
+				output_node{line: "pick 222 m2", msg: "m2"},
+				output_node{line: "pick 333 m3", msg: "m3"},
+			},
+		},
+		"incoming-no-relocate": {
+			map[string]reaction{
+			}, "pick 111 m1\npick 222 m2\nfixup 333 fixup! m1\npick 444 m4", "", []output_node{
+				output_node{line: "pick 111 m1", msg: "m1"},
+				output_node{line: "pick 222 m2", msg: "m2"},
+				output_node{line: "fixup 333 fixup! m1", msg: "fixup! m1"},
+				output_node{line: "pick 444 m4", msg: "m4"},
+			},
+		},
+		"incoming-yes-relocate": {
+			map[string]reaction{
+				"333": reaction{mode: commands["fixup"]},
+			}, "pick 111 m1\npick 222 m2\npick 333 fixup! m1\npick 444 m4", "", []output_node{
+				output_node{line: "pick 111 m1", msg: "m1"},
+				output_node{line: "fixup 333 fixup! m1", msg: "fixup! m1"},
+				output_node{line: "pick 222 m2", msg: "m2"},
+				output_node{line: "pick 444 m4", msg: "m4"},
+			},
+		},
+		"incoming-follow-relocate": {
+			map[string]reaction{
+				"333": reaction{mode: commands["fixup"]},
+			}, "pick 111 m1\npick 222 m2\npick 333 fixup! m1\nfixup 444 m4", "", []output_node{
+				output_node{line: "pick 111 m1", msg: "m1"},
+				output_node{line: "fixup 333 fixup! m1", msg: "fixup! m1"},
+				output_node{line: "fixup 444 m4", msg: "m4"},
+				output_node{line: "pick 222 m2", msg: "m2"},
+			},
+		},
+	}
+
+	for k, v := range testcases {
+		t.Run(k, func(t *testing.T) {
+			expected_head, expected_tail := newList()
+			for i := range v.output { expected_head.insert_after(&v.output[i]) }
+
+			head, tail, err := parseInput(v.input, bufio.NewScanner(strings.NewReader(v.input_data)))
+
+			if err == nil && v.expected_err != "" || err != nil && (v.expected_err == "" || !strings.Contains(err.Error(), v.expected_err)) {
+				t.Errorf("Unexpected error: got '%v', wanted '%s'", err, v.expected_err)
+			}
+
+			if err != nil { return }
+
+			if !reflect.DeepEqual(head, expected_head) { t.Errorf("Unexpected result: got:\n%s\n, expected:\n%v\n", str(head, tail), str(expected_head, expected_tail)) }
 		})
 	}
 }
