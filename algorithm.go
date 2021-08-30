@@ -152,7 +152,7 @@ func parseInput(config map[string]reaction, scanner myscanner) (*output_node, *o
 		}
 
 		if r.mode == commands["fixup"] || r.mode == commands["squash"] {
-			if mode == commands["fixup"] || mode == commands["squash"] {
+			if (mode == commands["fixup"] || mode == commands["squash"]) && len(r.extra) == 0 {
 				// if the command came in as a fixup/squash, and is configured to remain a fixup/squash, then
 				// it should remain bound to the commit it was originally attached to if that commit moves.
 				last = push_commit(fmt.Sprintf("%s %s %s", r.mode, hash, remainder), remainder, hash, r.auxiliary, last, commits_by_message, commits_by_hash)

@@ -510,11 +510,14 @@ func Test_parseInput(t *testing.T) {
 			map[string]reaction{
 				"333": reaction{mode: commands["fixup"], extra: "m1"},
 				"444": reaction{mode: commands["fixup"], extra: "111"},
-			}, "pick 111 m1\npick 222 m2\npick 333 m3\npick 444 m4", "", []output_node{
+				"666": reaction{mode: commands["fixup"], extra: "111"},
+			}, "pick 111 m1\npick 222 m2\npick 333 m3\npick 444 m4\npick 555 m5\nfixup 666 m6", "", []output_node{
 				output_node{line: "pick 111 m1", msg: "m1"},
+				output_node{line: "fixup 666 m6", msg: "m6"},
 				output_node{line: "fixup 444 m4", msg: "m4"},
 				output_node{line: "fixup 333 m3", msg: "m3"},
 				output_node{line: "pick 222 m2", msg: "m2"},
+				output_node{line: "pick 555 m5", msg: "m5"},
 			},
 		},
 	}
