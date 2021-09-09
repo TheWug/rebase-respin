@@ -46,6 +46,7 @@ func (this *output_node) insert_after(n *output_node) {
 }
 
 var commands = map[string]command{
+	// these are commands provided by git.
 	"pick":   "pick",
 	"p":      "pick",
 	"reword": "reword",
@@ -71,6 +72,10 @@ var commands = map[string]command{
 	"merge":    "",
 	"m":        "",
 	"":         "",
+
+	// these are extra commands provided by rebase-respin that git rebase isn't aware of.
+	"bubble":   "bubble",
+	"u":        "bubble",
 }
 
 // grab one token off the front of a string.

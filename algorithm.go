@@ -105,6 +105,7 @@ func readSettings(input map[string]reaction, scanner myscanner) (map[string]reac
 
 
 func parseInput(config map[string]reaction, scanner myscanner) (*output_node, *output_node, error) {
+	bubble_head, bubble_tail := newList()
 	head, tail := newList()
 	var last *output_node
 
@@ -162,10 +163,15 @@ func parseInput(config map[string]reaction, scanner myscanner) (*output_node, *o
 				last, e = relocate_commit(fmt.Sprintf("%s %s %s", r.mode, hash, remainder), remainder, hash, r.extra, r.auxiliary, last, commits_by_message, commits_by_hash)
 				if e != nil { return nil, nil, e }
 			}
+		} else if r.mode == commands["bubble"] {
+			last = push_commit(fmt.Sprintf("%s %s %s", commands["pick"], hash, remainder), remainder, hash, r.auxiliary, bubble_head, commits_by_message, commits_by_hash)
 		} else {
 			last = push_commit(fmt.Sprintf("%s %s %s", r.mode, hash, remainder), remainder, hash, r.auxiliary, head, commits_by_message, commits_by_hash)
 		}
 	}
 
-	return head, tail, nil
+	// concatenate the two lists together, moving bubble commits to the front of the pile
+	head.next.prev, bubble_tail.prev.next = bubble_tail.prev, head.next
+
+	return bubble_head, tail, nil
 }

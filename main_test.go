@@ -320,6 +320,8 @@ func Test_readSettings(t *testing.T) {
 				"1183": reaction{mode: commands["override"], auxiliary: []trailer{break_trailer{}}},
 				"1191": reaction{mode: commands["override"]},
 				"1193": reaction{mode: commands["override"]},
+				"11a1": reaction{mode: commands["bubble"]},
+				"11a3": reaction{mode: commands["bubble"]},
 			},
 `
 pick     1111
@@ -342,6 +344,8 @@ break    1181
   b      1183
 override 1191
   o      1193
+bubble   11a1
+  u      11a3
 `, "",
 		},
 		"bad-command": {
@@ -377,6 +381,7 @@ override 1191
 pick 1111
 reword 1111
 edit 1111
+bubble 1111
 fixup 1111
 squash 1111 extraaaa
 drop 1111
@@ -518,6 +523,25 @@ func Test_parseInput(t *testing.T) {
 				output_node{line: "fixup 333 m3", msg: "m3"},
 				output_node{line: "pick 222 m2", msg: "m2"},
 				output_node{line: "pick 555 m5", msg: "m5"},
+			},
+		},
+		"bubble-compound-relocate": {
+			map[string]reaction{
+				"aaa": reaction{mode: commands["bubble"]},
+				"bbb": reaction{mode: commands["bubble"]},
+				"ccc": reaction{mode: commands["bubble"]},
+				"ddd": reaction{mode: commands["squash"]},
+			}, "pick aaa b1\npick 111 m1\npick 222 m2\npick bbb b2\npick ddd squash! b1\npick 333 m3\npick 444 m4\npick ccc b3\nfixup 666 m6\npick 555 m5", "", []output_node{
+				output_node{line: "pick 111 m1", msg: "m1"},
+				output_node{line: "pick 222 m2", msg: "m2"},
+				output_node{line: "pick 333 m3", msg: "m3"},
+				output_node{line: "pick 444 m4", msg: "m4"},
+				output_node{line: "pick 555 m5", msg: "m5"},
+				output_node{line: "pick aaa b1", msg: "b1"},
+				output_node{line: "squash ddd squash! b1", msg: "squash! b1"},
+				output_node{line: "pick bbb b2", msg: "b2"},
+				output_node{line: "pick ccc b3", msg: "b3"},
+				output_node{line: "fixup 666 m6", msg: "m6"},
 			},
 		},
 	}
